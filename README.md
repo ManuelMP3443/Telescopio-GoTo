@@ -44,14 +44,6 @@ Este repositorio contiene todo el software, hardware y documentacion del proyect
     * Comunicación: Módulo Bluetooth HC-06
     * Actuadores: Motores a Pasos NEMA 17 con drivers A4988
       
-### Instalacion
-
- ### Prerrequisitos
-* [Git](https://git-scm.com/)
-* [Flutter SDK](https://flutter.dev/docs/get-started/install)
-* [Python 3.8+](https://www.python.org/downloads/)
-* Un servidor de Base de Datos (ej. [MySQL](https://dev.mysql.com/downloads/installer/))
-
 ## 🚀 Guía de Instalación y Puesta en Marcha
 
 Sigue estos pasos para configurar el entorno de desarrollo completo en tu máquina.
