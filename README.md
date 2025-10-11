@@ -41,7 +41,7 @@ Este repositorio contiene todo el software, hardware y documentacion del proyect
 * **Hardware (Controlador):**
     * Plataforma: Arduino
     * Lenguaje: C/C++
-    * Comunicación: Módulo Bluetooth HC-06
+    * Comunicación: Módulo Bluetooth BLE
     * Actuadores: Motores a Pasos NEMA 17 con drivers A4988
       
 ## 🚀 Guía de Instalación y Puesta en Marcha
