@@ -29,7 +29,7 @@ Este repositorio contiene todo el software, hardware y documentacion del proyect
 * **Frontend (App Móvil):**
     * Framework: Flutter
     * Lenguaje: Dart
-    * Comunicación: `flutter_bluetooth_serial`
+    * Comunicación: `flutter_blue_plu`
     * Ubicación: `geolocator`
     * Peticiones a servidor: `http`
 
