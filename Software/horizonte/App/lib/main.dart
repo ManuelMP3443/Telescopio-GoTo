@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:async';
@@ -44,18 +44,18 @@ class AstroObject {
 void main() {
 
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const ExploradorEstelarApp());
+  runApp(const Horizonte());
 }
 
-class ExploradorEstelarApp extends StatelessWidget {
-  const ExploradorEstelarApp({super.key});
+class Horizonte extends StatelessWidget {
+  const Horizonte({super.key});
 
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Explorador Estelar',
+      title: 'Horizonte',
       theme: ThemeData.dark(),
       home: const HomeScreen(),
     );
@@ -73,11 +73,22 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   // --- Variables de Estado ---
 
-  BluetoothState _bluetoothState = BluetoothState.UNKNOWN;
-  BluetoothConnection? connection;
-  bool isConnecting = false;
+  BluetoothAdapterState _adapterState = BluetoothAdapterState.unknown;
+  StreamSubscription<BluetoothAdapterState>? _adapterStateSubscription;
 
-  bool get isConnected => connection != null && connection!.isConnected;
+  BluetoothDevice? _targetDevice;
+  BluetoothCharacteristic? _targetCharacteristic;
+  StreamSubscription<BluetoothConnectionState>? _deviceStateSubscription;
+
+  bool _isConnecting = false;
+  bool _isDisconnecting = false; // <-- AÑADE ESTA LÍNEA
+  bool get isConnected => _targetCharacteristic != null;
+
+  // --- DEFINE TUS UUIDS AQUÍ ---
+  // Deben coincidir exactamente con los del firmware de tu dispositivo BLE
+  final Guid SERVICE_UUID = Guid("0000FFE0-0000-1000-8000-00805F9B34FB");
+  final Guid CHARACTERISTIC_UUID = Guid("0000FFE2-0000-1000-8000-00805F9B34FB");
+
 
   Position? posicion;
   //datos locales
@@ -111,7 +122,7 @@ class _HomeScreenState extends State<HomeScreen> {
   AstroObject? selectedObject;
   bool isLoading = true;
 
-  bool _isInitialized = false; // <-- NUEVA VARIABLE: Para controlar la inicialización
+  bool _isInitialized = false; 
   bool isLoadingData = false;
 
 
@@ -123,11 +134,21 @@ class _HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initialize();
     });
+
+    _adapterStateSubscription = FlutterBluePlus.adapterState.listen((state) {
+      if (mounted) {
+        setState(() {
+          _adapterState = state;
+        });
+      }
+    });
   }
 
   @override
   void dispose() {
-    connection?.dispose();
+    _adapterStateSubscription?.cancel();
+    _deviceStateSubscription?.cancel();
+    _targetDevice?.disconnect();
     super.dispose();
   }
 
@@ -152,27 +173,29 @@ class _HomeScreenState extends State<HomeScreen> {
       Permission.bluetoothConnect,
     ].request();
     debugPrint("Paso 1/7: Permisos solicitados.");
-    FlutterBluetoothSerial.instance.onStateChanged().listen((state) {
-      if (mounted) setState(() => _bluetoothState = state);
-    });
+
+    // El listener del estado del adaptador ya está en initState.
     debugPrint("Paso 2/7: Listener de Bluetooth configurado.");
+    
     debugPrint("Paso 3/7: Verificando si la ubicación está activada...");
     bool isLocationEnabled = await Geolocator.isLocationServiceEnabled();
     debugPrint("Paso 4/7: Verificación de ubicación completa. ¿Activada?: $isLocationEnabled");
-    debugPrint("Paso 5/7: Verificando estado del Bluetooth...");
-    _bluetoothState = await FlutterBluetoothSerial.instance.state;
-    debugPrint("Paso 6/7: Verificación de Bluetooth completa. Estado: $_bluetoothState");
-    if (_bluetoothState == BluetoothState.STATE_OFF) {
-      if (mounted) await _showServiceDialog(
-          "Activar Bluetooth", "Para continuar, por favor activa el Bluetooth.",
-          FlutterBluetoothSerial.instance.openSettings);
 
+    debugPrint("Paso 5/7: Verificando estado del Bluetooth...");
+    _adapterState = await FlutterBluePlus.adapterState.first;
+    debugPrint("Paso 6/7: Verificación de Bluetooth completa. Estado: $_adapterState");
+
+    if (_adapterState != BluetoothAdapterState.on) {
+      if (mounted) await _showServiceDialog(
+        "Activar Bluetooth", "Para continuar, por favor activa el Bluetooth.",
+        () async { if (Platform.isAndroid) await FlutterBluePlus.turnOn(); }
+      );
     }
 
     if (!isLocationEnabled) {
       if (mounted) await _showServiceDialog(
-          "Activar Ubicación", "Se requiere la ubicación para los cálculos.",
-          Geolocator.openLocationSettings);
+        "Activar Ubicación", "Se requiere la ubicación para los cálculos.",
+        Geolocator.openLocationSettings);
     }
 
     await _obtenerUbicacion();
@@ -278,83 +301,132 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // --- LÓGICA DE CONEXIÓN MEJORADA ---
   Future<void> _conectarODesconectar() async {
-    if (isConnected) {
-      await connection?.close();
-      setState(() {});
-    } else {
-      // Si el bluetooth NO está encendido, avisar al usuario
-      if (_bluetoothState != BluetoothState.STATE_ON) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text(
-                'Por favor, activa el Bluetooth para poder conectar.'))
-        );
-        return; // Salir de la función para no intentar buscar
-      }
-      _buscarYConectar();
-    }
-  }
+  if (isConnected) {
+    // ---- Lógica de Desconexión Mejorada ----
+    if (_isDisconnecting) return; // Si ya nos estamos desconectando, no hacer nada.
 
-  void _buscarYConectar() async {
     setState(() {
-      isConnecting = true;
+      _isDisconnecting = true;
     });
+
     try {
-      BluetoothDevice? hc06;
-      // Usamos un Completer para esperar el resultado del Stream
-      final completer = Completer<BluetoothDevice?>();
-
-      StreamSubscription<
-          BluetoothDiscoveryResult> streamSubscription = FlutterBluetoothSerial
-          .instance.startDiscovery().listen((r) {
-        if (r.device.name == "HC-06" && !completer.isCompleted) {
-          completer.complete(r.device);
-        }
-      });
-
-      // Esperar un máximo de 10 segundos
-      hc06 = await completer.future.timeout(
-          const Duration(seconds: 10), onTimeout: () => null);
-
-      streamSubscription.cancel(); // Siempre cancelar el stream
-
-      if (hc06 != null) {
-        await _conectarAlDispositivo(hc06);
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('No se encontró el dispositivo HC-06.')));
-        }
-      }
+      await _targetDevice?.disconnect();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error al buscar: $e')));
+          SnackBar(content: Text('Error al desconectar: $e'))
+        );
       }
     } finally {
-      if (mounted) setState(() {
-        isConnecting = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isDisconnecting = false;
+        });
+      }
     }
+  } else {
+    // ---- Lógica de Conexión ----
+    if (_isConnecting) return; // Si ya nos estamos conectando, no hacer nada.
+    
+    // Llamamos a la función que ya teníamos.
+    _scanAndConnect();
   }
+}
 
-  Future<void> _conectarAlDispositivo(BluetoothDevice server) async {
-    try {
-      connection = await BluetoothConnection.toAddress(server.address);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Conectado a ${server.name}')));
-      }
-      setState(() {}); // Actualiza la UI
-      connection!.input!.listen(null).onDone(() {
-        if (mounted) setState(() {}); // Se desconectó, actualiza la UI
-      });
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error al conectar: $e')));
+void _scanAndConnect() async {
+  if (mounted) setState(() => _isConnecting = true);
+
+  // --- Usaremos esta variable local durante todo el proceso ---
+  BluetoothDevice? foundDevice; 
+  StreamSubscription? scanSubscription;
+
+  try {
+    scanSubscription = FlutterBluePlus.scanResults.listen(
+      (results) {
+        if (foundDevice != null) return;
+        for (ScanResult r in results) {
+          if (r.device.platformName == 'BT04-A') {
+            print('¡Dispositivo BT04-A encontrado durante el escaneo!');
+            foundDevice = r.device;
+            FlutterBluePlus.stopScan();
+          }
+        }
+      },
+    );
+
+    await FlutterBluePlus.startScan(timeout: const Duration(seconds: 10));
+    scanSubscription.cancel();
+
+    if (foundDevice == null) {
+      throw "No se encontró el dispositivo BT04-A.";
+    }
+
+    // --- SECUENCIA DE CONEXIÓN A PRUEBA DE RACE CONDITIONS ---
+    print("Dispositivo encontrado. Iniciando secuencia de conexión...");
+
+    // Suscribirse a los cambios de estado. Usaremos _targetDevice aquí,
+    // pero la lógica principal usará foundDevice.
+    _deviceStateSubscription = foundDevice!.connectionState.listen((state) {
+        if (state == BluetoothConnectionState.disconnected) {
+            if (mounted) {
+                if (!_isDisconnecting) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Dispositivo se desconectó.'))
+                    );
+                }
+                setState(() {
+                    _targetDevice = null;
+                    _targetCharacteristic = null;
+                });
+            }
+        }
+    });
+
+    // PASO CLAVE 1: Conectar usando la variable LOCAL 'foundDevice'
+    await foundDevice!.connect(autoConnect: false);
+    print("Paso 1/2: Conexión física establecida.");
+
+    // PASO CLAVE 2: Descubrir servicios usando la variable LOCAL 'foundDevice'
+    List<BluetoothService> services = await foundDevice!.discoverServices();
+    print("Paso 2/2: Servicios descubiertos con éxito.");
+
+    for (var service in services) {
+      if (service.uuid == SERVICE_UUID) {
+        for (var characteristic in service.characteristics) {
+          if (characteristic.uuid == CHARACTERISTIC_UUID) {
+            print("¡ÉXITO TOTAL! Característica encontrada. La app está lista.");
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Conectado y listo para usar.'))
+              );
+              // PASO CLAVE 3: SOLO AHORA, al final y con éxito, actualizamos el estado de la clase.
+              setState(() {
+                _targetDevice = foundDevice; // <--- ASIGNACIÓN FINAL
+                _targetCharacteristic = characteristic;
+                _isConnecting = false;
+              });
+            }
+            return;
+          }
+        }
       }
     }
+
+    throw "Característica FFE2 no encontrada en el servicio FFE0.";
+
+  } catch (e) {
+    print("ERROR en la secuencia de conexión: $e");
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Fallo en la conexión: $e'))
+      );
+      // Nos aseguramos de desconectar si algo falló.
+      foundDevice?.disconnect();
+      setState(() => _isConnecting = false);
+    }
   }
+}
+
 
   Future<void> _enviarEstrella() async {
     if (selectedObject == null) {
@@ -362,9 +434,9 @@ class _HomeScreenState extends State<HomeScreen> {
           content: Text('Por favor, selecciona una estrella primero.')));
       return;
     }
-    if (!isConnected) {
+    if (!isConnected) { // La variable 'isConnected' ahora verifica _targetCharacteristic
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('No estás conectado al dispositivo Bluetooth.')));
+          content: Text('No estás conectado al dispositivo BLE.')));
       return;
     }
     if (posicion == null) {
@@ -376,37 +448,30 @@ class _HomeScreenState extends State<HomeScreen> {
     final info = selectedObject!;
     final raDeg = raStringToDegrees(info.ra);
     final decDeg = decStringToDegrees(info.dec);
-
     final altAz = ecuatorialAHorizontal(
-      raDeg: raDeg,
-      decDeg: decDeg,
-      latDeg: posicion!.latitude,
-      lonDeg: posicion!.longitude,
-      fechaHora: DateTime.now(),
-    );
+        raDeg: raDeg,
+        decDeg: decDeg,
+        latDeg: posicion!.latitude,
+        lonDeg: posicion!.longitude,
+        fechaHora: DateTime.now());
 
-    String mensaje = "${altAz['azimut']!.toStringAsFixed(2)},${altAz['altitud']!
-        .toStringAsFixed(2)}\n";
+    String mensaje = "${altAz['azimut']!.toStringAsFixed(2)},${altAz['altitud']!.toStringAsFixed(2)}\n";
 
     try {
-      connection!.output.add(Uint8List.fromList(utf8.encode(mensaje)));
-      await connection!.output.allSent;
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Enviado: $mensaje')));
+      // Escribir el valor en la característica BLE
+      await _targetCharacteristic!.write(
+        utf8.encode(mensaje), // Convertir el String a List<int>
+        withoutResponse: true // Más rápido, no espera confirmación. Cambiar a false si necesitas asegurar la entrega.
+      );
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Enviado: $mensaje')));
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al enviar: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Error al enviar: $e')));
     }
   }
 
-  Future<void> _checkPermissions() async {
-    await [
-      Permission.location,
-      Permission.bluetooth,
-      Permission.bluetoothScan,
-      Permission.bluetoothConnect
-    ].request();
-  }
 
   Future<void> _obtenerUbicacion() async {
     try {
@@ -578,13 +643,26 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
 
-            const Spacer(), // Empuja los botones hacia abajo
+            const Spacer(),
 
             ElevatedButton(
-              onPressed: isConnecting ? null : _conectarODesconectar,
-              child: Text(isConnecting ? 'Buscando...' : (isConnected
-                  ? 'Desconectar'
-                  : 'Conectar a HC-06')),
+              // Deshabilitar el botón si está conectando O desconectando.
+              onPressed: (_isConnecting || _isDisconnecting) ? null : _conectarODesconectar,
+
+              // Cambiar el texto del botón según el estado actual.
+              child: Text(
+                _isConnecting
+                  ? 'Buscando...'
+                  : _isDisconnecting
+                    ? 'Desconectando...'
+                    : isConnected
+                      ? 'Desconectar'
+                      : 'Conectar al Telescopio'
+              ),
+              style: ElevatedButton.styleFrom(
+                // Opcional: Cambiar el color para que sea más claro
+                backgroundColor: isConnected ? Colors.redAccent : Colors.blueAccent,
+              ),
             ),
             const SizedBox(height: 10),
             ElevatedButton(
@@ -597,7 +675,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Explorador Estelar')),
+      appBar: AppBar(title: const Text('Horizonte')),
       body: Center(child: currentPage),
     );
   }

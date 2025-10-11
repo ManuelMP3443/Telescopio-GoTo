@@ -32,7 +32,7 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.8
   geolocator: ^10.0.1
-  flutter_bluetooth_serial: ^0.4.0 # <-- LA NUEVA LIBRERÍA
+  flutter_blue_plus: ^1.17.6
   permission_handler: ^11.3.1 
   http: ^1.2.1
   flutter_svg: ^2.0.10+1
