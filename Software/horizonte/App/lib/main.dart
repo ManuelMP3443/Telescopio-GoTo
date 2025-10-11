@@ -7,7 +7,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
-import 'dart:io'; // Para SocketException
+import 'dart:io'; 
 
 
 
@@ -81,7 +81,7 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription<BluetoothConnectionState>? _deviceStateSubscription;
 
   bool _isConnecting = false;
-  bool _isDisconnecting = false; // <-- AÑADE ESTA LÍNEA
+  bool _isDisconnecting = false; 
   bool get isConnected => _targetCharacteristic != null;
 
   // --- DEFINE TUS UUIDS AQUÍ ---
@@ -159,7 +159,6 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _isInitialized = true;
       });
-      // 3. Y SOLO ENTONCES, procedemos a buscar los datos.
       _fetchAstroData();
     }
   }
@@ -174,7 +173,6 @@ class _HomeScreenState extends State<HomeScreen> {
     ].request();
     debugPrint("Paso 1/7: Permisos solicitados.");
 
-    // El listener del estado del adaptador ya está en initState.
     debugPrint("Paso 2/7: Listener de Bluetooth configurado.");
     
     debugPrint("Paso 3/7: Verificando si la ubicación está activada...");
@@ -206,7 +204,7 @@ class _HomeScreenState extends State<HomeScreen> {
       Future<void> Function() onConfirm) async {
     return showDialog<void>(
       context: context,
-      barrierDismissible: false, // El usuario debe tomar una acción
+      barrierDismissible: false, 
       builder: (BuildContext context) {
         return AlertDialog(
           title: Text(title),
@@ -222,7 +220,6 @@ class _HomeScreenState extends State<HomeScreen> {
               child: const Text('Cancelar'),
               onPressed: () {
                 Navigator.of(context).pop();
-                // Opcional: podrías cerrar la app si los servicios son obligatorios
               },
             ),
             TextButton(
@@ -299,11 +296,10 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  // --- LÓGICA DE CONEXIÓN MEJORADA ---
+  // --- LÓGICA DE CONEXIÓN BLE ---
   Future<void> _conectarODesconectar() async {
   if (isConnected) {
-    // ---- Lógica de Desconexión Mejorada ----
-    if (_isDisconnecting) return; // Si ya nos estamos desconectando, no hacer nada.
+    if (_isDisconnecting) return; 
 
     setState(() {
       _isDisconnecting = true;
@@ -326,9 +322,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   } else {
     // ---- Lógica de Conexión ----
-    if (_isConnecting) return; // Si ya nos estamos conectando, no hacer nada.
-    
-    // Llamamos a la función que ya teníamos.
+    if (_isConnecting) return; 
     _scanAndConnect();
   }
 }
@@ -336,7 +330,6 @@ class _HomeScreenState extends State<HomeScreen> {
 void _scanAndConnect() async {
   if (mounted) setState(() => _isConnecting = true);
 
-  // --- Usaremos esta variable local durante todo el proceso ---
   BluetoothDevice? foundDevice; 
   StreamSubscription? scanSubscription;
 
@@ -361,11 +354,9 @@ void _scanAndConnect() async {
       throw "No se encontró el dispositivo BT04-A.";
     }
 
-    // --- SECUENCIA DE CONEXIÓN A PRUEBA DE RACE CONDITIONS ---
+    // --- SECUENCIA DE CONEXIÓN ---
     print("Dispositivo encontrado. Iniciando secuencia de conexión...");
 
-    // Suscribirse a los cambios de estado. Usaremos _targetDevice aquí,
-    // pero la lógica principal usará foundDevice.
     _deviceStateSubscription = foundDevice!.connectionState.listen((state) {
         if (state == BluetoothConnectionState.disconnected) {
             if (mounted) {
@@ -401,7 +392,7 @@ void _scanAndConnect() async {
               );
               // PASO CLAVE 3: SOLO AHORA, al final y con éxito, actualizamos el estado de la clase.
               setState(() {
-                _targetDevice = foundDevice; // <--- ASIGNACIÓN FINAL
+                _targetDevice = foundDevice; 
                 _targetCharacteristic = characteristic;
                 _isConnecting = false;
               });
@@ -434,7 +425,7 @@ void _scanAndConnect() async {
           content: Text('Por favor, selecciona una estrella primero.')));
       return;
     }
-    if (!isConnected) { // La variable 'isConnected' ahora verifica _targetCharacteristic
+    if (!isConnected) { 
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('No estás conectado al dispositivo BLE.')));
       return;
@@ -461,7 +452,7 @@ void _scanAndConnect() async {
       // Escribir el valor en la característica BLE
       await _targetCharacteristic!.write(
         utf8.encode(mensaje), // Convertir el String a List<int>
-        withoutResponse: true // Más rápido, no espera confirmación. Cambiar a false si necesitas asegurar la entrega.
+        withoutResponse: true 
       );
 
       ScaffoldMessenger.of(context)
