@@ -1,0 +1,17 @@
+# Entorno virtual (¡Muy importante ignorarlo!)
+venv/
+env/
+
+# Caché de Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Bases de datos locales
+db.sqlite3
+stardata
+
+# Configuraciones locales y secretos
+local_settings.py
+.env

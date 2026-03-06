@@ -1,0 +1,18 @@
+# Entorno de desarrollo
+.vscode/
+log/
+
+# Archivos de compilación de CMake y Pico SDK
+build/
+generated/
+CMakeCache.txt
+CMakeFiles/
+Makefile
+*.cmake
+
+# Binarios generados
+*.uf2
+*.elf
+*.bin
+*.map
+*.hex
