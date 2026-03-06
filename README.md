@@ -27,8 +27,8 @@ La aplicación móvil está desarrollada en Flutter y cuenta con un tema oscuro 
 * `/Hardware/horizonte-hardware`: Código fuente y configuración del microcontrolador.
     * `/src`: Archivos fuente en C (`main.c`, código autogenerado del perfil GATT).
     * `/include`: Cabeceras (`.h`).
-    * [cite_start]`CMakeLists.txt`: Configuración de compilación para el SDK de la Pico[cite: 2].
-    * [cite_start]`horizonte.gatt`: Definición del perfil Bluetooth LE personalizado[cite: 1].
+    * `CMakeLists.txt`: Configuración de compilación para el SDK de la Pico.
+    * `horizonte.gatt`: Definición del perfil Bluetooth LE personalizado.
 
 ## Tecnologías Utilizadas
 
@@ -43,9 +43,9 @@ La aplicación móvil está desarrollada en Flutter y cuenta con un tema oscuro 
 
 **Hardware (Controlador Go-To):**
 * **Plataforma:** Raspberry Pi Pico W (RP2040)
-* [cite_start]**Lenguaje:** C/C++ (Pico C/C++ SDK, CMake [cite: 2])
+* **Lenguaje:** C/C++ (Pico C/C++ SDK, CMake )
 * **Sensores (IMU):** Acelerómetro y Giroscopio MPU9250 + Magnetómetro AK8963 (Comunicación I2C). Filtro Madgwick implementado por software.
-* [cite_start]**Comunicaciones:** BLE (Pico BTstack [cite: 3][cite_start], Servicio primario FFE0 [cite: 1]) y servidor UDP de respaldo vía LwIP.
+* **Comunicaciones:** BLE (Pico BTstack , Servicio primario FFE0 ) y servidor UDP de respaldo vía LwIP.
 * **Actuadores:** Motores a Pasos NEMA 17 con drivers (Controlados por GPIO mediante modulación de pulsos y PID).
 
 ---
@@ -56,7 +56,7 @@ La aplicación móvil está desarrollada en Flutter y cuenta con un tema oscuro 
 * Git
 * **Para el Servidor:** Python 3.8+ y un servidor MySQL.
 * **Para la App:** Flutter SDK.
-* [cite_start]**Para el Hardware:** CMake (v3.13+)[cite: 2], ARM GCC Toolchain (`arm-none-eabi-gcc`), y el **Raspberry Pi Pico SDK** configurado en tu variable de entorno `PICO_SDK_PATH`.
+* **Para el Hardware:** CMake (v3.13+), ARM GCC Toolchain (`arm-none-eabi-gcc`), y el **Raspberry Pi Pico SDK** configurado en tu variable de entorno `PICO_SDK_PATH`.
 
 
 ### 1. Configuración del Backend (Servidor)
